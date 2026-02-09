@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { createClient } from '@/lib/supabase/client';
-import type { Task, Bucket } from '@/lib/types/database';
+import type { Task, Bucket, TaskUpdate } from '@/lib/types/database';
 import {
   CheckCircle2,
   Circle,
@@ -17,7 +17,13 @@ import {
   UserCheck,
   Timer,
   X,
-  MessageSquare
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Plus,
+  Save,
+  Edit3
 } from 'lucide-react';
 
 interface TaskListProps {
@@ -32,6 +38,13 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [completingTask, setCompletingTask] = useState<(Task & { buckets: Bucket }) | null>(null);
   const [completionNote, setCompletionNote] = useState('');
+  const [detailsExpandedId, setDetailsExpandedId] = useState<string | null>(null);
+  const [taskUpdates, setTaskUpdates] = useState<Record<string, TaskUpdate[]>>({});
+  const [editingProgressId, setEditingProgressId] = useState<string | null>(null);
+  const [progressNotesDraft, setProgressNotesDraft] = useState('');
+  const [newUpdateText, setNewUpdateText] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [addingUpdate, setAddingUpdate] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -211,6 +224,95 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
 
     setLoadingId(null);
     router.refresh();
+  };
+
+  // Fetch task updates when expanding details
+  const handleExpandDetails = async (task: Task & { buckets: Bucket }) => {
+    if (detailsExpandedId === task.id) {
+      setDetailsExpandedId(null);
+      setEditingProgressId(null);
+      return;
+    }
+
+    setDetailsExpandedId(task.id);
+    setProgressNotesDraft(task.progress_notes || '');
+    setNewUpdateText('');
+
+    // Fetch activity log for this task
+    const { data, error } = await supabase
+      .from('task_updates')
+      .select('*')
+      .eq('task_id', task.id)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setTaskUpdates(prev => ({ ...prev, [task.id]: data }));
+    }
+  };
+
+  // Save progress notes
+  const handleSaveProgressNotes = async (taskId: string) => {
+    setSavingNotes(true);
+
+    const { error } = await supabase
+      .from('tasks')
+      .update({ progress_notes: progressNotesDraft.trim() || null })
+      .eq('id', taskId);
+
+    if (error) {
+      console.error('Error saving progress notes:', error);
+      alert('Failed to save notes');
+    } else {
+      setEditingProgressId(null);
+      router.refresh();
+    }
+
+    setSavingNotes(false);
+  };
+
+  // Add activity log entry
+  const handleAddUpdate = async (task: Task & { buckets: Bucket }) => {
+    if (!newUpdateText.trim()) return;
+
+    setAddingUpdate(true);
+
+    const { data, error } = await supabase
+      .from('task_updates')
+      .insert({
+        task_id: task.id,
+        user_id: task.user_id,
+        content: newUpdateText.trim()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding update:', error);
+      alert('Failed to add update');
+    } else if (data) {
+      setTaskUpdates(prev => ({
+        ...prev,
+        [task.id]: [data, ...(prev[task.id] || [])]
+      }));
+      setNewUpdateText('');
+    }
+
+    setAddingUpdate(false);
+  };
+
+  const formatUpdateDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   const getPriorityColor = (priority: string) => {
@@ -420,7 +522,131 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
                           {task.expected_hours}h
                         </span>
                       )}
+
+                      {/* Progress indicator */}
+                      {(task.progress_notes || (taskUpdates[task.id]?.length > 0)) && (
+                        <span className="flex items-center text-xs text-blue-500">
+                          <FileText className="w-3 h-3 mr-1" />
+                          Has notes
+                        </span>
+                      )}
                     </div>
+
+                    {/* Expand/Collapse Details Button */}
+                    {task.status !== 'complete' && (
+                      <button
+                        onClick={() => handleExpandDetails(task)}
+                        className="mt-2 flex items-center text-xs text-gray-500 hover:text-gray-700"
+                      >
+                        {detailsExpandedId === task.id ? (
+                          <>
+                            <ChevronUp className="w-3.5 h-3.5 mr-1" />
+                            Hide progress
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-3.5 h-3.5 mr-1" />
+                            Log progress
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {/* Expanded Progress Section */}
+                    {detailsExpandedId === task.id && (
+                      <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
+                        {/* Progress Notes */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs font-medium text-gray-600">
+                              Current Status / Notes
+                            </label>
+                            {editingProgressId !== task.id ? (
+                              <button
+                                onClick={() => {
+                                  setEditingProgressId(task.id);
+                                  setProgressNotesDraft(task.progress_notes || '');
+                                }}
+                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center"
+                              >
+                                <Edit3 className="w-3 h-3 mr-1" />
+                                Edit
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleSaveProgressNotes(task.id)}
+                                disabled={savingNotes}
+                                className="text-xs text-green-600 hover:text-green-700 flex items-center"
+                              >
+                                <Save className="w-3 h-3 mr-1" />
+                                {savingNotes ? 'Saving...' : 'Save'}
+                              </button>
+                            )}
+                          </div>
+                          {editingProgressId === task.id ? (
+                            <textarea
+                              value={progressNotesDraft}
+                              onChange={(e) => setProgressNotesDraft(e.target.value)}
+                              placeholder="What's the current status? Any blockers or notes?"
+                              rows={2}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              autoFocus
+                            />
+                          ) : (
+                            <div className="text-sm text-gray-600 bg-gray-50 rounded px-2 py-1.5 min-h-[2rem]">
+                              {task.progress_notes || <span className="text-gray-400 italic">No notes yet</span>}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Activity Log */}
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 block mb-1">
+                            Activity Log
+                          </label>
+
+                          {/* Add new update */}
+                          <div className="flex space-x-2 mb-2">
+                            <input
+                              type="text"
+                              value={newUpdateText}
+                              onChange={(e) => setNewUpdateText(e.target.value)}
+                              placeholder="Add a progress update..."
+                              className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleAddUpdate(task);
+                                }
+                              }}
+                            />
+                            <button
+                              onClick={() => handleAddUpdate(task)}
+                              disabled={!newUpdateText.trim() || addingUpdate}
+                              className="px-2 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Update list */}
+                          <div className="space-y-1 max-h-40 overflow-y-auto">
+                            {(taskUpdates[task.id] || []).length === 0 ? (
+                              <p className="text-xs text-gray-400 italic py-1">No updates yet</p>
+                            ) : (
+                              (taskUpdates[task.id] || []).map((update) => (
+                                <div key={update.id} className="flex items-start space-x-2 text-sm bg-blue-50 rounded px-2 py-1">
+                                  <span className="text-xs text-gray-400 whitespace-nowrap mt-0.5">
+                                    {formatUpdateDate(update.created_at)}
+                                  </span>
+                                  <span className="text-gray-700">{update.content}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}

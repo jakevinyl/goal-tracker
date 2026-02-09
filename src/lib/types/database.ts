@@ -48,8 +48,17 @@ export type Task = {
   snoozed_until: string | null;
   completed_at: string | null;
   completion_note: string | null;
+  progress_notes: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type TaskUpdate = {
+  id: string;
+  task_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
 };
 
 export type SurveyQuestion = {
@@ -133,6 +142,7 @@ export type GoalWithBucket = Goal & {
 export type TaskWithRelations = Task & {
   bucket: Bucket;
   goal?: Goal;
+  task_updates?: TaskUpdate[];
 };
 
 export type CheckInWithQuestion = CheckInResponse & {
@@ -150,3 +160,4 @@ export type TaskInsert = Omit<Task, 'id' | 'created_at' | 'updated_at'>;
 export type CheckInInsert = Omit<CheckInResponse, 'id' | 'created_at'>;
 export type TimeEntryInsert = Omit<TimeEntry, 'id' | 'created_at' | 'updated_at'>;
 export type ProgressLogInsert = Omit<ProgressLogEntry, 'id' | 'created_at' | 'updated_at'>;
+export type TaskUpdateInsert = Omit<TaskUpdate, 'id' | 'created_at'>;
