@@ -153,6 +153,11 @@ export type TimeEntryWithBucket = TimeEntry & {
   bucket: Bucket;
 };
 
+export type ProgressLogWithRelations = ProgressLogEntry & {
+  bucket?: Bucket;
+  goal?: Goal;
+};
+
 // Insert/Update types (without server-generated fields)
 export type BucketInsert = Omit<Bucket, 'id' | 'created_at' | 'updated_at'>;
 export type GoalInsert = Omit<Goal, 'id' | 'created_at' | 'updated_at'>;
