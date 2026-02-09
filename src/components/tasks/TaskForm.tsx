@@ -227,7 +227,7 @@ export function TaskForm({ buckets, goals = [], userId, onClose, isModal = false
                 onChange={(e) => setGoalId(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">None</option>
+                <option value="">Not linked</option>
                 {filteredGoals.map((goal) => (
                   <option key={goal.id} value={goal.id}>
                     {goal.title}
