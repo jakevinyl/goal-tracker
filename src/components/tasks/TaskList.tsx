@@ -23,7 +23,8 @@ import {
   FileText,
   Plus,
   Save,
-  Edit3
+  Edit3,
+  Pencil
 } from 'lucide-react';
 
 interface TaskListProps {
@@ -45,6 +46,15 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
   const [newUpdateText, setNewUpdateText] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [addingUpdate, setAddingUpdate] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{
+    title: string;
+    priority: 'low' | 'medium' | 'high';
+    due_date: string;
+    expected_hours: string;
+    description: string;
+  }>({ title: '', priority: 'medium', due_date: '', expected_hours: '', description: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -224,6 +234,55 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
 
     setLoadingId(null);
     router.refresh();
+  };
+
+  // Start editing a task
+  const handleStartEdit = (task: Task & { buckets: Bucket }) => {
+    setEditingTaskId(task.id);
+    setEditDraft({
+      title: task.title,
+      priority: task.priority,
+      due_date: task.due_date || '',
+      expected_hours: task.expected_hours?.toString() || '',
+      description: task.description || '',
+    });
+  };
+
+  // Cancel editing
+  const handleCancelEdit = () => {
+    setEditingTaskId(null);
+    setEditDraft({ title: '', priority: 'medium', due_date: '', expected_hours: '', description: '' });
+  };
+
+  // Save task edits
+  const handleSaveEdit = async (taskId: string) => {
+    if (!editDraft.title.trim()) {
+      alert('Title is required');
+      return;
+    }
+
+    setSavingEdit(true);
+
+    const { error } = await supabase
+      .from('tasks')
+      .update({
+        title: editDraft.title.trim(),
+        priority: editDraft.priority,
+        due_date: editDraft.due_date || null,
+        expected_hours: editDraft.expected_hours ? parseFloat(editDraft.expected_hours) : null,
+        description: editDraft.description.trim() || null,
+      })
+      .eq('id', taskId);
+
+    if (error) {
+      console.error('Error updating task:', error);
+      alert('Failed to update task');
+    } else {
+      setEditingTaskId(null);
+      router.refresh();
+    }
+
+    setSavingEdit(false);
   };
 
   // Fetch task updates when expanding details
@@ -449,208 +508,300 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-2 flex-wrap">
-                      <p className={`font-medium ${
-                        task.status === 'complete' ? 'text-gray-400 line-through' : 'text-gray-900'
-                      }`}>
-                        {task.title}
-                      </p>
-                      {task.is_recurring && (
-                        <Repeat className="w-3.5 h-3.5 text-blue-500" />
-                      )}
-                      {task.is_delegated && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700">
-                          <UserCheck className="w-3 h-3 mr-1" />
-                          {task.delegated_to || 'Delegated'}
-                        </span>
-                      )}
-                    </div>
+                    {/* Edit Mode */}
+                    {editingTaskId === task.id ? (
+                      <div className="space-y-3">
+                        {/* Title */}
+                        <input
+                          type="text"
+                          value={editDraft.title}
+                          onChange={(e) => setEditDraft(prev => ({ ...prev, title: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-sm font-medium border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="Task title"
+                          autoFocus
+                        />
 
-                    {task.description && (
-                      <p className="text-sm text-gray-500 mt-0.5">{task.description}</p>
-                    )}
+                        {/* Description */}
+                        <input
+                          type="text"
+                          value={editDraft.description}
+                          onChange={(e) => setEditDraft(prev => ({ ...prev, description: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="Description (optional)"
+                        />
 
-                    {/* Completion note for completed tasks */}
-                    {task.status === 'complete' && task.completion_note && (
-                      <div className="flex items-start space-x-1 mt-1 text-sm text-green-700 bg-green-50 rounded px-2 py-1">
-                        <MessageSquare className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                        <span>{task.completion_note}</span>
-                      </div>
-                    )}
+                        {/* Row of fields */}
+                        <div className="flex flex-wrap gap-2">
+                          {/* Priority */}
+                          <select
+                            value={editDraft.priority}
+                            onChange={(e) => setEditDraft(prev => ({ ...prev, priority: e.target.value as 'low' | 'medium' | 'high' }))}
+                            className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                          </select>
 
-                    <div className="flex items-center space-x-3 mt-1.5 flex-wrap gap-y-1">
-                      {/* Bucket tag */}
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                        style={{
-                          backgroundColor: `${task.buckets?.color}20`,
-                          color: task.buckets?.color
-                        }}
-                      >
-                        {task.buckets?.name}
-                      </span>
+                          {/* Due Date */}
+                          <input
+                            type="date"
+                            value={editDraft.due_date}
+                            onChange={(e) => setEditDraft(prev => ({ ...prev, due_date: e.target.value }))}
+                            className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
 
-                      {/* Due date */}
-                      {task.due_date && task.status !== 'complete' && (
-                        <span className={`flex items-center text-xs ${
-                          isOverdue(task.due_date) ? 'text-red-500' : 'text-gray-500'
-                        }`}>
-                          <Calendar className="w-3 h-3 mr-1" />
-                          {formatDueDate(task.due_date)}
-                        </span>
-                      )}
-
-                      {/* Snoozed until */}
-                      {task.status === 'snoozed' && task.snoozed_until && (
-                        <span className="flex items-center text-xs text-yellow-600">
-                          <Clock className="w-3 h-3 mr-1" />
-                          Until {formatDueDate(task.snoozed_until)}
-                        </span>
-                      )}
-
-                      {/* Recurrence */}
-                      {task.is_recurring && task.recurrence_rule && (
-                        <span className="text-xs text-blue-500 capitalize">
-                          {task.recurrence_rule}
-                        </span>
-                      )}
-
-                      {/* Expected time */}
-                      {task.expected_hours && (
-                        <span className="flex items-center text-xs text-gray-500">
-                          <Timer className="w-3 h-3 mr-1" />
-                          {task.expected_hours}h
-                        </span>
-                      )}
-
-                      {/* Progress indicator */}
-                      {(task.progress_notes || (taskUpdates[task.id]?.length > 0)) && (
-                        <span className="flex items-center text-xs text-blue-500">
-                          <FileText className="w-3 h-3 mr-1" />
-                          Has notes
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Expand/Collapse Details Button */}
-                    {task.status !== 'complete' && (
-                      <button
-                        onClick={() => handleExpandDetails(task)}
-                        className="mt-2 flex items-center text-xs text-gray-500 hover:text-gray-700"
-                      >
-                        {detailsExpandedId === task.id ? (
-                          <>
-                            <ChevronUp className="w-3.5 h-3.5 mr-1" />
-                            Hide progress
-                          </>
-                        ) : (
-                          <>
-                            <ChevronDown className="w-3.5 h-3.5 mr-1" />
-                            Log progress
-                          </>
-                        )}
-                      </button>
-                    )}
-
-                    {/* Expanded Progress Section */}
-                    {detailsExpandedId === task.id && (
-                      <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
-                        {/* Progress Notes */}
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-xs font-medium text-gray-600">
-                              Current Status / Notes
-                            </label>
-                            {editingProgressId !== task.id ? (
-                              <button
-                                onClick={() => {
-                                  setEditingProgressId(task.id);
-                                  setProgressNotesDraft(task.progress_notes || '');
-                                }}
-                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center"
-                              >
-                                <Edit3 className="w-3 h-3 mr-1" />
-                                Edit
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleSaveProgressNotes(task.id)}
-                                disabled={savingNotes}
-                                className="text-xs text-green-600 hover:text-green-700 flex items-center"
-                              >
-                                <Save className="w-3 h-3 mr-1" />
-                                {savingNotes ? 'Saving...' : 'Save'}
-                              </button>
-                            )}
-                          </div>
-                          {editingProgressId === task.id ? (
-                            <textarea
-                              value={progressNotesDraft}
-                              onChange={(e) => setProgressNotesDraft(e.target.value)}
-                              placeholder="What's the current status? Any blockers or notes?"
-                              rows={2}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              autoFocus
+                          {/* Expected Hours */}
+                          <div className="flex items-center space-x-1">
+                            <input
+                              type="number"
+                              step="0.25"
+                              min="0"
+                              value={editDraft.expected_hours}
+                              onChange={(e) => setEditDraft(prev => ({ ...prev, expected_hours: e.target.value }))}
+                              className="w-16 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder="Est."
                             />
-                          ) : (
-                            <div className="text-sm text-gray-600 bg-gray-50 rounded px-2 py-1.5 min-h-[2rem]">
-                              {task.progress_notes || <span className="text-gray-400 italic">No notes yet</span>}
-                            </div>
+                            <span className="text-xs text-gray-500">hrs</span>
+                          </div>
+                        </div>
+
+                        {/* Save/Cancel buttons */}
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleSaveEdit(task.id)}
+                            disabled={savingEdit}
+                            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                          >
+                            <Save className="w-3.5 h-3.5 mr-1" />
+                            {savingEdit ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Normal View */}
+                        <div className="flex items-center space-x-2 flex-wrap">
+                          <p className={`font-medium ${
+                            task.status === 'complete' ? 'text-gray-400 line-through' : 'text-gray-900'
+                          }`}>
+                            {task.title}
+                          </p>
+                          {task.is_recurring && (
+                            <Repeat className="w-3.5 h-3.5 text-blue-500" />
+                          )}
+                          {task.is_delegated && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700">
+                              <UserCheck className="w-3 h-3 mr-1" />
+                              {task.delegated_to || 'Delegated'}
+                            </span>
                           )}
                         </div>
 
-                        {/* Activity Log */}
-                        <div>
-                          <label className="text-xs font-medium text-gray-600 block mb-1">
-                            Activity Log
-                          </label>
+                        {task.description && (
+                          <p className="text-sm text-gray-500 mt-0.5">{task.description}</p>
+                        )}
 
-                          {/* Add new update */}
-                          <div className="flex space-x-2 mb-2">
-                            <input
-                              type="text"
-                              value={newUpdateText}
-                              onChange={(e) => setNewUpdateText(e.target.value)}
-                              placeholder="Add a progress update..."
-                              className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleAddUpdate(task);
-                                }
-                              }}
-                            />
-                            <button
-                              onClick={() => handleAddUpdate(task)}
-                              disabled={!newUpdateText.trim() || addingUpdate}
-                              className="px-2 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
+                        {/* Completion note for completed tasks */}
+                        {task.status === 'complete' && task.completion_note && (
+                          <div className="flex items-start space-x-1 mt-1 text-sm text-green-700 bg-green-50 rounded px-2 py-1">
+                            <MessageSquare className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            <span>{task.completion_note}</span>
                           </div>
+                        )}
 
-                          {/* Update list */}
-                          <div className="space-y-1 max-h-40 overflow-y-auto">
-                            {(taskUpdates[task.id] || []).length === 0 ? (
-                              <p className="text-xs text-gray-400 italic py-1">No updates yet</p>
-                            ) : (
-                              (taskUpdates[task.id] || []).map((update) => (
-                                <div key={update.id} className="flex items-start space-x-2 text-sm bg-blue-50 rounded px-2 py-1">
-                                  <span className="text-xs text-gray-400 whitespace-nowrap mt-0.5">
-                                    {formatUpdateDate(update.created_at)}
-                                  </span>
-                                  <span className="text-gray-700">{update.content}</span>
-                                </div>
-                              ))
-                            )}
-                          </div>
+                        <div className="flex items-center space-x-3 mt-1.5 flex-wrap gap-y-1">
+                          {/* Bucket tag */}
+                          <span
+                            className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                            style={{
+                              backgroundColor: `${task.buckets?.color}20`,
+                              color: task.buckets?.color
+                            }}
+                          >
+                            {task.buckets?.name}
+                          </span>
+
+                          {/* Due date */}
+                          {task.due_date && task.status !== 'complete' && (
+                            <span className={`flex items-center text-xs ${
+                              isOverdue(task.due_date) ? 'text-red-500' : 'text-gray-500'
+                            }`}>
+                              <Calendar className="w-3 h-3 mr-1" />
+                              {formatDueDate(task.due_date)}
+                            </span>
+                          )}
+
+                          {/* Snoozed until */}
+                          {task.status === 'snoozed' && task.snoozed_until && (
+                            <span className="flex items-center text-xs text-yellow-600">
+                              <Clock className="w-3 h-3 mr-1" />
+                              Until {formatDueDate(task.snoozed_until)}
+                            </span>
+                          )}
+
+                          {/* Recurrence */}
+                          {task.is_recurring && task.recurrence_rule && (
+                            <span className="text-xs text-blue-500 capitalize">
+                              {task.recurrence_rule}
+                            </span>
+                          )}
+
+                          {/* Expected time */}
+                          {task.expected_hours && (
+                            <span className="flex items-center text-xs text-gray-500">
+                              <Timer className="w-3 h-3 mr-1" />
+                              {task.expected_hours}h
+                            </span>
+                          )}
+
+                          {/* Progress indicator */}
+                          {(task.progress_notes || (taskUpdates[task.id]?.length > 0)) && (
+                            <span className="flex items-center text-xs text-blue-500">
+                              <FileText className="w-3 h-3 mr-1" />
+                              Has notes
+                            </span>
+                          )}
                         </div>
-                      </div>
+
+                        {/* Expand/Collapse Details Button */}
+                        {task.status !== 'complete' && (
+                          <button
+                            onClick={() => handleExpandDetails(task)}
+                            className="mt-2 flex items-center text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            {detailsExpandedId === task.id ? (
+                              <>
+                                <ChevronUp className="w-3.5 h-3.5 mr-1" />
+                                Hide progress
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="w-3.5 h-3.5 mr-1" />
+                                Log progress
+                              </>
+                            )}
+                          </button>
+                        )}
+
+                        {/* Expanded Progress Section */}
+                        {detailsExpandedId === task.id && (
+                          <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
+                            {/* Progress Notes */}
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-xs font-medium text-gray-600">
+                                  Current Status / Notes
+                                </label>
+                                {editingProgressId !== task.id ? (
+                                  <button
+                                    onClick={() => {
+                                      setEditingProgressId(task.id);
+                                      setProgressNotesDraft(task.progress_notes || '');
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-700 flex items-center"
+                                  >
+                                    <Edit3 className="w-3 h-3 mr-1" />
+                                    Edit
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleSaveProgressNotes(task.id)}
+                                    disabled={savingNotes}
+                                    className="text-xs text-green-600 hover:text-green-700 flex items-center"
+                                  >
+                                    <Save className="w-3 h-3 mr-1" />
+                                    {savingNotes ? 'Saving...' : 'Save'}
+                                  </button>
+                                )}
+                              </div>
+                              {editingProgressId === task.id ? (
+                                <textarea
+                                  value={progressNotesDraft}
+                                  onChange={(e) => setProgressNotesDraft(e.target.value)}
+                                  placeholder="What's the current status? Any blockers or notes?"
+                                  rows={2}
+                                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  autoFocus
+                                />
+                              ) : (
+                                <div className="text-sm text-gray-600 bg-gray-50 rounded px-2 py-1.5 min-h-[2rem]">
+                                  {task.progress_notes || <span className="text-gray-400 italic">No notes yet</span>}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Activity Log */}
+                            <div>
+                              <label className="text-xs font-medium text-gray-600 block mb-1">
+                                Activity Log
+                              </label>
+
+                              {/* Add new update */}
+                              <div className="flex space-x-2 mb-2">
+                                <input
+                                  type="text"
+                                  value={newUpdateText}
+                                  onChange={(e) => setNewUpdateText(e.target.value)}
+                                  placeholder="Add a progress update..."
+                                  className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault();
+                                      handleAddUpdate(task);
+                                    }
+                                  }}
+                                />
+                                <button
+                                  onClick={() => handleAddUpdate(task)}
+                                  disabled={!newUpdateText.trim() || addingUpdate}
+                                  className="px-2 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              {/* Update list */}
+                              <div className="space-y-1 max-h-40 overflow-y-auto">
+                                {(taskUpdates[task.id] || []).length === 0 ? (
+                                  <p className="text-xs text-gray-400 italic py-1">No updates yet</p>
+                                ) : (
+                                  (taskUpdates[task.id] || []).map((update) => (
+                                    <div key={update.id} className="flex items-start space-x-2 text-sm bg-blue-50 rounded px-2 py-1">
+                                      <span className="text-xs text-gray-400 whitespace-nowrap mt-0.5">
+                                        {formatUpdateDate(update.created_at)}
+                                      </span>
+                                      <span className="text-gray-700">{update.content}</span>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
 
                   {/* Actions */}
                   <div className="flex items-center space-x-1">
+                    {/* Edit button - only show when not already editing */}
+                    {task.status !== 'complete' && editingTaskId !== task.id && (
+                      <button
+                        onClick={() => handleStartEdit(task)}
+                        className="p-1.5 text-gray-400 hover:text-blue-500"
+                        title="Edit task"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    )}
+
                     {task.status === 'snoozed' ? (
                       <button
                         onClick={() => handleUnsnooze(task.id)}
@@ -660,7 +811,7 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
                       >
                         <RotateCcw className="w-4 h-4" />
                       </button>
-                    ) : task.status !== 'complete' && (
+                    ) : task.status !== 'complete' && editingTaskId !== task.id && (
                       <div className="relative">
                         <button
                           onClick={() => setExpandedId(expandedId === task.id ? null : task.id)}
