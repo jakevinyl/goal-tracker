@@ -50,7 +50,7 @@ export default async function TasksPage() {
   // Sort open tasks: overdue first, then by priority, then by due date
   const sortedOpenTasks = [...openTasks].sort((a, b) => {
     // Priority weight
-    const priorityWeight = { high: 0, medium: 1, low: 2 };
+    const priorityWeight: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
     // Overdue tasks first
     const aOverdue = a.due_date && a.due_date < today;
@@ -59,8 +59,10 @@ export default async function TasksPage() {
     if (!aOverdue && bOverdue) return 1;
 
     // Then by priority
-    if (priorityWeight[a.priority] !== priorityWeight[b.priority]) {
-      return priorityWeight[a.priority] - priorityWeight[b.priority];
+    const aPriority = priorityWeight[a.priority] ?? 1;
+    const bPriority = priorityWeight[b.priority] ?? 1;
+    if (aPriority !== bPriority) {
+      return aPriority - bPriority;
     }
 
     // Then by due date
