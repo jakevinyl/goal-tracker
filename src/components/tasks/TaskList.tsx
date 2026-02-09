@@ -14,7 +14,9 @@ import {
   Calendar,
   Repeat,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  UserCheck,
+  Timer
 } from 'lucide-react';
 
 interface TaskListProps {
@@ -203,7 +205,7 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 flex-wrap">
                     <p className={`font-medium ${
                       task.status === 'complete' ? 'text-gray-400 line-through' : 'text-gray-900'
                     }`}>
@@ -211,6 +213,12 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
                     </p>
                     {task.is_recurring && (
                       <Repeat className="w-3.5 h-3.5 text-blue-500" />
+                    )}
+                    {task.is_delegated && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700">
+                        <UserCheck className="w-3 h-3 mr-1" />
+                        {task.delegated_to || 'Delegated'}
+                      </span>
                     )}
                   </div>
 
@@ -252,6 +260,14 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
                     {task.is_recurring && task.recurrence_rule && (
                       <span className="text-xs text-blue-500 capitalize">
                         {task.recurrence_rule}
+                      </span>
+                    )}
+
+                    {/* Expected time */}
+                    {task.expected_hours && (
+                      <span className="flex items-center text-xs text-gray-500">
+                        <Timer className="w-3 h-3 mr-1" />
+                        {task.expected_hours}h
                       </span>
                     )}
                   </div>

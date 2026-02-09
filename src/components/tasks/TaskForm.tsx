@@ -23,8 +23,11 @@ export function TaskForm({ buckets, goals = [], userId, onClose, isModal = false
   const [goalId, setGoalId] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [dueDate, setDueDate] = useState('');
+  const [expectedHours, setExpectedHours] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceRule, setRecurrenceRule] = useState('');
+  const [isDelegated, setIsDelegated] = useState(false);
+  const [delegatedTo, setDelegatedTo] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(isModal);
   const router = useRouter();
@@ -55,8 +58,11 @@ export function TaskForm({ buckets, goals = [], userId, onClose, isModal = false
         description: description.trim() || null,
         priority,
         due_date: dueDate || null,
+        expected_hours: expectedHours ? parseFloat(expectedHours) : null,
         is_recurring: isRecurring,
         recurrence_rule: isRecurring ? recurrenceRule : null,
+        is_delegated: isDelegated,
+        delegated_to: isDelegated ? delegatedTo.trim() || null : null,
         status: 'open',
       });
 
@@ -71,8 +77,11 @@ export function TaskForm({ buckets, goals = [], userId, onClose, isModal = false
       setGoalId('');
       setPriority('medium');
       setDueDate('');
+      setExpectedHours('');
       setIsRecurring(false);
       setRecurrenceRule('');
+      setIsDelegated(false);
+      setDelegatedTo('');
       if (!isModal) setIsExpanded(false);
       if (onClose) onClose();
       router.refresh();
@@ -174,7 +183,7 @@ export function TaskForm({ buckets, goals = [], userId, onClose, isModal = false
             </div>
           </div>
 
-          {/* Due Date & Goal Row */}
+          {/* Due Date & Expected Time Row */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -188,24 +197,66 @@ export function TaskForm({ buckets, goals = [], userId, onClose, isModal = false
               />
             </div>
 
-            {bucketId && filteredGoals.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Link to Goal
-                </label>
-                <select
-                  value={goalId}
-                  onChange={(e) => setGoalId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">None</option>
-                  {filteredGoals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>
-                      {goal.title}
-                    </option>
-                  ))}
-                </select>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Expected Time
+              </label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  step="0.25"
+                  min="0.25"
+                  value={expectedHours}
+                  onChange={(e) => setExpectedHours(e.target.value)}
+                  placeholder="e.g., 2"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <span className="text-sm text-gray-500">hours</span>
               </div>
+            </div>
+          </div>
+
+          {/* Goal Link (if bucket has goals) */}
+          {bucketId && filteredGoals.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Link to Goal
+              </label>
+              <select
+                value={goalId}
+                onChange={(e) => setGoalId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">None</option>
+                {filteredGoals.map((goal) => (
+                  <option key={goal.id} value={goal.id}>
+                    {goal.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Delegated */}
+          <div className="space-y-2">
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={isDelegated}
+                onChange={(e) => setIsDelegated(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Delegated to someone else</span>
+            </label>
+
+            {isDelegated && (
+              <input
+                type="text"
+                value={delegatedTo}
+                onChange={(e) => setDelegatedTo(e.target.value)}
+                placeholder="Who is responsible? (e.g., Jackie, Bob)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
             )}
           </div>
 

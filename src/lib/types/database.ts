@@ -40,8 +40,11 @@ export type Task = {
   status: 'open' | 'complete' | 'snoozed';
   priority: 'low' | 'medium' | 'high';
   due_date: string | null;
+  expected_hours: number | null;
   is_recurring: boolean;
   recurrence_rule: string | null;
+  is_delegated: boolean;
+  delegated_to: string | null;
   snoozed_until: string | null;
   completed_at: string | null;
   created_at: string;
