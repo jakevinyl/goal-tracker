@@ -72,33 +72,10 @@ export function TimeEntryForm({ buckets, userId }: TimeEntryFormProps) {
     { label: '+4h', value: 4 },
   ];
 
-  const handleQuickLog = async (hoursValue: number) => {
-    if (!selectedBucket) {
-      alert('Please select a bucket first');
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    const { error } = await supabase
-      .from('time_entries')
-      .insert({
-        user_id: userId,
-        bucket_id: selectedBucket,
-        entry_date: date,
-        hours: hoursValue,
-        description: null,
-        entry_type: 'manual',
-      });
-
-    if (error) {
-      console.error('Error creating time entry:', error);
-      alert('Failed to save time entry');
-    } else {
-      router.refresh();
-    }
-
-    setIsSubmitting(false);
+  const handleQuickLog = (hoursValue: number) => {
+    // Add to current hours instead of replacing
+    const currentHours = parseFloat(hours) || 0;
+    setHours((currentHours + hoursValue).toString());
   };
 
   return (
@@ -130,28 +107,25 @@ export function TimeEntryForm({ buckets, userId }: TimeEntryFormProps) {
             </select>
           </div>
 
-          {/* Quick Log Buttons */}
-          {selectedBucket && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Quick Log
-              </label>
-              <div className="flex space-x-2">
-                {quickLogOptions.map((option) => (
-                  <Button
-                    key={option.label}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleQuickLog(option.value)}
-                    disabled={isSubmitting}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
-              </div>
+          {/* Quick Add Buttons */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Quick Add
+            </label>
+            <div className="flex space-x-2">
+              {quickLogOptions.map((option) => (
+                <Button
+                  key={option.label}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickLog(option.value)}
+                >
+                  {option.label}
+                </Button>
+              ))}
             </div>
-          )}
+          </div>
 
           {/* Hours Input */}
           <div className="grid grid-cols-2 gap-4">
