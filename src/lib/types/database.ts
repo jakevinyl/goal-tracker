@@ -47,6 +47,7 @@ export type Task = {
   delegated_to: string | null;
   snoozed_until: string | null;
   completed_at: string | null;
+  completion_note: string | null;
   created_at: string;
   updated_at: string;
 };
