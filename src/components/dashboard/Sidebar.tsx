@@ -14,6 +14,7 @@ import {
   FolderOpen,
   Settings,
   LogOut,
+  Gauge,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Time Tracking', href: '/dashboard/time', icon: Clock },
   { name: 'Tasks', href: '/dashboard/tasks', icon: CheckSquare },
   { name: 'Goals', href: '/dashboard/goals', icon: Target },
+  { name: 'Measures', href: '/dashboard/measures', icon: Gauge },
   { name: 'Progress Log', href: '/dashboard/progress', icon: BookOpen },
   { name: 'Buckets', href: '/dashboard/buckets', icon: FolderOpen },
   { name: 'Trends', href: '/dashboard/trends', icon: BarChart3 },

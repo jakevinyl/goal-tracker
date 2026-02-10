@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/Card';
 import {
   Target,
+  Gauge,
   BookOpen,
   FolderOpen,
   BarChart3,
@@ -11,6 +12,7 @@ import {
 
 const moreLinks = [
   { name: 'Goals', href: '/dashboard/goals', icon: Target, color: 'text-blue-600' },
+  { name: 'Measures', href: '/dashboard/measures', icon: Gauge, color: 'text-indigo-600' },
   { name: 'Progress Log', href: '/dashboard/progress', icon: BookOpen, color: 'text-purple-600' },
   { name: 'Buckets', href: '/dashboard/buckets', icon: FolderOpen, color: 'text-green-600' },
   { name: 'Trends', href: '/dashboard/trends', icon: BarChart3, color: 'text-orange-600' },

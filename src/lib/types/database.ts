@@ -29,6 +29,9 @@ export type Goal = {
   completed_date: string | null;
   priority: 'low' | 'medium' | 'high';
   recurrence: 'quarterly_review' | 'annual' | 'none' | null;
+  // Target tracking for linked measures
+  target_type: 'average' | 'count' | null; // average for 1-10 scale, count for binary
+  target_value: number | null; // e.g., average of 7, or count of 20
   created_at: string;
   updated_at: string;
 };
@@ -68,7 +71,8 @@ export type SurveyQuestion = {
   id: string;
   user_id: string;
   question_text: string;
-  baseline_score: number;
+  question_type: 'scale' | 'binary'; // scale = 1-10, binary = yes/no
+  baseline_score: number; // For scale: 1-10, for binary: 0 or 1
   target_score: number | null;
   is_active: boolean;
   sort_order: number;
@@ -81,8 +85,19 @@ export type CheckInResponse = {
   user_id: string;
   question_id: string;
   check_in_date: string;
-  score: number;
+  score: number; // 1-10 for scale, 0 or 1 for binary
   notes: string | null;
+  created_at: string;
+};
+
+// Logs check-in responses against goals for trend tracking
+export type GoalCheckInLog = {
+  id: string;
+  goal_id: string;
+  user_id: string;
+  check_in_response_id: string;
+  log_date: string;
+  value: number; // The score/value logged (1-10 or 0/1)
   created_at: string;
 };
 
@@ -142,6 +157,7 @@ export type GoalWithBucket = Goal & {
   bucket: Bucket;
   measure?: SurveyQuestion;
   sub_goals?: Goal[];
+  check_in_logs?: GoalCheckInLog[];
 };
 
 export type TaskWithRelations = Task & {
@@ -171,3 +187,4 @@ export type CheckInInsert = Omit<CheckInResponse, 'id' | 'created_at'>;
 export type TimeEntryInsert = Omit<TimeEntry, 'id' | 'created_at' | 'updated_at'>;
 export type ProgressLogInsert = Omit<ProgressLogEntry, 'id' | 'created_at' | 'updated_at'>;
 export type TaskUpdateInsert = Omit<TaskUpdate, 'id' | 'created_at'>;
+export type GoalCheckInLogInsert = Omit<GoalCheckInLog, 'id' | 'created_at'>;

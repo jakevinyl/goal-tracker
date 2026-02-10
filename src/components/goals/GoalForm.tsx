@@ -33,10 +33,26 @@ export function GoalForm({
   const [bucketId, setBucketId] = useState(editingGoal?.bucket_id || '');
   const [parentGoalId, setParentGoalId] = useState(editingGoal?.parent_goal_id || '');
   const [measureId, setMeasureId] = useState(editingGoal?.measure_id || '');
+  const [targetType, setTargetType] = useState<'average' | 'count' | null>(editingGoal?.target_type || null);
+  const [targetValue, setTargetValue] = useState(editingGoal?.target_value?.toString() || '');
   const [status, setStatus] = useState<Goal['status']>(editingGoal?.status || 'not_started');
   const [priority, setPriority] = useState<Goal['priority']>(editingGoal?.priority || 'medium');
   const [targetDate, setTargetDate] = useState(editingGoal?.target_date || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Get selected measure to determine target type
+  const selectedMeasure = questions.find(q => q.id === measureId);
+  const isBinaryMeasure = selectedMeasure?.question_type === 'binary';
+
+  // Auto-set target type when measure changes
+  useEffect(() => {
+    if (measureId && selectedMeasure) {
+      setTargetType(selectedMeasure.question_type === 'binary' ? 'count' : 'average');
+    } else {
+      setTargetType(null);
+      setTargetValue('');
+    }
+  }, [measureId, selectedMeasure]);
   const router = useRouter();
   const supabase = createClient();
 
@@ -62,6 +78,8 @@ export function GoalForm({
       bucket_id: bucketId,
       parent_goal_id: parentGoalId || null,
       measure_id: measureId || null,
+      target_type: measureId ? targetType : null,
+      target_value: measureId && targetValue ? parseFloat(targetValue) : null,
       title: title.trim(),
       description: description.trim() || null,
       notes: notes.trim() || null,
@@ -100,6 +118,8 @@ export function GoalForm({
         setBucketId('');
         setParentGoalId('');
         setMeasureId('');
+        setTargetType(null);
+        setTargetValue('');
         setStatus('not_started');
         setPriority('medium');
         setTargetDate('');
@@ -244,25 +264,83 @@ export function GoalForm({
           </div>
 
           {/* Measure (Daily Check-in Question) */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Linked Measure (Daily Check-in)
-            </label>
-            <select
-              value={measureId}
-              onChange={(e) => setMeasureId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">No linked measure</option>
-              {questions.map((q) => (
-                <option key={q.id} value={q.id}>
-                  {q.question_text}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              This question will be highlighted in your daily check-in while the goal is active.
-            </p>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Linked Measure (Daily Check-in)
+              </label>
+              <select
+                value={measureId}
+                onChange={(e) => setMeasureId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">No linked measure</option>
+                {questions.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.question_type === 'binary' ? '✓ ' : '📊 '}
+                    {q.question_text}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                This question will be highlighted in your daily check-in while the goal is active.
+              </p>
+            </div>
+
+            {/* Target value when measure is selected */}
+            {measureId && selectedMeasure && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 space-y-3">
+                <div className="text-sm font-medium text-purple-900">
+                  Goal Target for &quot;{selectedMeasure.question_text}&quot;
+                </div>
+
+                {isBinaryMeasure ? (
+                  /* Binary: count target */
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Target Count (how many times?)
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="number"
+                        min="1"
+                        value={targetValue}
+                        onChange={(e) => setTargetValue(e.target.value)}
+                        placeholder="e.g., 20"
+                        className="w-32 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      />
+                      <span className="text-sm text-gray-600">times total</span>
+                    </div>
+                    <p className="text-xs text-purple-600 mt-1">
+                      Each &quot;Yes&quot; response counts as 1 towards this target.
+                    </p>
+                  </div>
+                ) : (
+                  /* Scale: average target */
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Target Average Score
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        step="0.5"
+                        value={targetValue}
+                        onChange={(e) => setTargetValue(e.target.value)}
+                        placeholder="e.g., 8"
+                        className="w-32 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      />
+                      <span className="text-sm text-gray-600">average (1-10)</span>
+                    </div>
+                    <p className="text-xs text-purple-600 mt-1">
+                      Your daily scores will be averaged to track progress towards this target.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Notes */}
