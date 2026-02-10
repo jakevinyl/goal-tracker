@@ -18,8 +18,11 @@ export type Goal = {
   id: string;
   user_id: string;
   bucket_id: string;
+  parent_goal_id: string | null;
+  measure_id: string | null;
   title: string;
   description: string | null;
+  notes: string | null;
   status: 'not_started' | 'in_progress' | 'complete' | 'archived';
   progress_percent: number;
   target_date: string | null;
@@ -137,6 +140,8 @@ export type BucketWithRelations = Bucket & {
 
 export type GoalWithBucket = Goal & {
   bucket: Bucket;
+  measure?: SurveyQuestion;
+  sub_goals?: Goal[];
 };
 
 export type TaskWithRelations = Task & {

@@ -15,7 +15,7 @@ export default async function DailyPage() {
   const today = new Date().toISOString().split('T')[0];
 
   // Fetch data in parallel
-  const [questionsResult, responsesResult] = await Promise.all([
+  const [questionsResult, responsesResult, activeGoalsResult] = await Promise.all([
     // Get active survey questions
     supabase
       .from('survey_questions')
@@ -30,14 +30,37 @@ export default async function DailyPage() {
       .select('*, survey_questions(*)')
       .eq('user_id', user.id)
       .order('check_in_date', { ascending: false })
-      .limit(30),
+      .limit(100),
+
+    // Get active goals with their linked measures
+    supabase
+      .from('goals')
+      .select('id, title, measure_id')
+      .eq('user_id', user.id)
+      .in('status', ['not_started', 'in_progress'])
+      .not('measure_id', 'is', null),
   ]);
 
   const questions = questionsResult.data || [];
   const responses = responsesResult.data || [];
+  const activeGoals = activeGoalsResult.data || [];
 
-  // Check if today's check-in exists
-  const todayResponse = responses.find((r) => r.check_in_date === today);
+  // Create a map of question IDs to their linked goals
+  const questionGoalMap: Record<string, { goalId: string; goalTitle: string }[]> = {};
+  activeGoals.forEach(goal => {
+    if (goal.measure_id) {
+      if (!questionGoalMap[goal.measure_id]) {
+        questionGoalMap[goal.measure_id] = [];
+      }
+      questionGoalMap[goal.measure_id].push({
+        goalId: goal.id,
+        goalTitle: goal.title
+      });
+    }
+  });
+
+  // Get today's responses
+  const todayResponses = responses.filter(r => r.check_in_date === today);
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
@@ -50,10 +73,11 @@ export default async function DailyPage() {
       {/* Streak Display */}
       <StreakDisplay responses={responses} />
 
-      {/* Check-In Form or Today's Summary */}
+      {/* Check-In Form */}
       <CheckInForm
         questions={questions}
-        todayResponse={todayResponse}
+        todayResponses={todayResponses}
+        questionGoalMap={questionGoalMap}
         userId={user.id}
       />
 

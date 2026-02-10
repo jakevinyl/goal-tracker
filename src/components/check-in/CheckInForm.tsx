@@ -4,22 +4,42 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { createClient } from '@/lib/supabase/client';
 import type { SurveyQuestion, CheckInResponse } from '@/lib/types/database';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Target, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface CheckInFormProps {
   questions: SurveyQuestion[];
-  todayResponse?: CheckInResponse & { survey_questions: SurveyQuestion };
+  todayResponses: (CheckInResponse & { survey_questions?: SurveyQuestion })[];
+  questionGoalMap: Record<string, { goalId: string; goalTitle: string }[]>;
   userId: string;
 }
 
-export function CheckInForm({ questions, todayResponse, userId }: CheckInFormProps) {
-  const [score, setScore] = useState<number>(todayResponse?.score || 5);
-  const [notes, setNotes] = useState(todayResponse?.notes || '');
+interface QuestionScore {
+  questionId: string;
+  score: number;
+  notes: string;
+}
+
+export function CheckInForm({ questions, todayResponses, questionGoalMap, userId }: CheckInFormProps) {
+  // Initialize scores from today's responses
+  const initialScores: Record<string, QuestionScore> = {};
+  questions.forEach(q => {
+    const existing = todayResponses.find(r => r.question_id === q.id);
+    initialScores[q.id] = {
+      questionId: q.id,
+      score: existing?.score || 5,
+      notes: existing?.notes || ''
+    };
+  });
+
+  const [scores, setScores] = useState<Record<string, QuestionScore>>(initialScores);
+  const [expandedQuestion, setExpandedQuestion] = useState<string | null>(
+    // Auto-expand first question with a linked goal, or first question
+    questions.find(q => questionGoalMap[q.id])?.id || questions[0]?.id || null
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isComplete, setIsComplete] = useState(!!todayResponse);
+  const [isComplete, setIsComplete] = useState(todayResponses.length === questions.length && questions.length > 0);
   const router = useRouter();
   const supabase = createClient();
 
@@ -32,7 +52,7 @@ export function CheckInForm({ questions, todayResponse, userId }: CheckInFormPro
             No check-in questions configured yet.
           </p>
           <p className="text-sm text-gray-400">
-            Run the seed script in Supabase to add the default question,
+            Run the seed script in Supabase to add questions,
             or add questions manually in settings.
           </p>
         </CardContent>
@@ -40,7 +60,15 @@ export function CheckInForm({ questions, todayResponse, userId }: CheckInFormPro
     );
   }
 
-  const question = questions[0]; // For now, just use the first question
+  const updateScore = (questionId: string, field: 'score' | 'notes', value: number | string) => {
+    setScores(prev => ({
+      ...prev,
+      [questionId]: {
+        ...prev[questionId],
+        [field]: value
+      }
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,43 +76,50 @@ export function CheckInForm({ questions, todayResponse, userId }: CheckInFormPro
 
     const today = new Date().toISOString().split('T')[0];
 
-    if (todayResponse) {
-      // Update existing response
-      const { error } = await supabase
-        .from('check_in_responses')
-        .update({ score, notes })
-        .eq('id', todayResponse.id);
+    try {
+      // Process each question
+      for (const question of questions) {
+        const scoreData = scores[question.id];
+        const existingResponse = todayResponses.find(r => r.question_id === question.id);
 
-      if (error) {
-        console.error('Error updating check-in:', error);
-        setIsSubmitting(false);
-        return;
+        if (existingResponse) {
+          // Update existing
+          await supabase
+            .from('check_in_responses')
+            .update({
+              score: scoreData.score,
+              notes: scoreData.notes || null
+            })
+            .eq('id', existingResponse.id);
+        } else {
+          // Create new
+          await supabase
+            .from('check_in_responses')
+            .insert({
+              user_id: userId,
+              question_id: question.id,
+              check_in_date: today,
+              score: scoreData.score,
+              notes: scoreData.notes || null,
+            });
+        }
       }
-    } else {
-      // Create new response
-      const { error } = await supabase
-        .from('check_in_responses')
-        .insert({
-          user_id: userId,
-          question_id: question.id,
-          check_in_date: today,
-          score,
-          notes: notes || null,
-        });
 
-      if (error) {
-        console.error('Error creating check-in:', error);
-        setIsSubmitting(false);
-        return;
-      }
+      setIsComplete(true);
+      router.refresh();
+    } catch (error) {
+      console.error('Error saving check-in:', error);
     }
 
-    setIsComplete(true);
     setIsSubmitting(false);
-    router.refresh();
   };
 
-  if (isComplete && todayResponse) {
+  // Calculate average score
+  const avgScore = questions.length > 0
+    ? Math.round((Object.values(scores).reduce((sum, s) => sum + s.score, 0) / questions.length) * 10) / 10
+    : 0;
+
+  if (isComplete) {
     return (
       <Card>
         <CardContent className="py-8">
@@ -95,14 +130,28 @@ export function CheckInForm({ questions, todayResponse, userId }: CheckInFormPro
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Check-in complete!</h3>
               <p className="text-gray-500 mt-1">
-                You scored <span className="font-semibold text-blue-600">{score}</span> today
+                Average score: <span className="font-semibold text-blue-600">{avgScore}</span>
               </p>
             </div>
-            {notes && (
-              <p className="text-sm text-gray-600 italic">&ldquo;{notes}&rdquo;</p>
-            )}
+            <div className="text-sm text-gray-600">
+              {questions.map(q => {
+                const scoreData = scores[q.id];
+                const linkedGoals = questionGoalMap[q.id];
+                return (
+                  <div key={q.id} className="flex items-center justify-between py-1">
+                    <span className="flex items-center">
+                      {linkedGoals && (
+                        <Target className="w-3 h-3 text-purple-500 mr-1" />
+                      )}
+                      <span className="truncate max-w-[200px]">{q.question_text}</span>
+                    </span>
+                    <span className="font-medium ml-2">{scoreData.score}</span>
+                  </div>
+                );
+              })}
+            </div>
             <Button variant="outline" onClick={() => setIsComplete(false)}>
-              Edit response
+              Edit responses
             </Button>
           </div>
         </CardContent>
@@ -113,79 +162,136 @@ export function CheckInForm({ questions, todayResponse, userId }: CheckInFormPro
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{question.question_text}</CardTitle>
+        <CardTitle>How are you doing today?</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Score Slider */}
-          <div className="space-y-4">
-            <div className="flex justify-between text-sm text-gray-500">
-              <span>1</span>
-              <span>5</span>
-              <span>10</span>
-            </div>
-            <input
-              type="range"
-              min="1"
-              max="10"
-              step="0.5"
-              value={score}
-              onChange={(e) => setScore(parseFloat(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-            />
-            <div className="text-center">
-              <span className="text-5xl font-bold text-blue-600">{score}</span>
-            </div>
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {questions.map((question) => {
+            const scoreData = scores[question.id];
+            const linkedGoals = questionGoalMap[question.id];
+            const isExpanded = expandedQuestion === question.id;
 
-          {/* Quick Score Buttons */}
-          <div className="flex justify-center space-x-2">
-            {[1, 3, 5, 7, 9, 10].map((val) => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => setScore(val)}
-                className={`w-10 h-10 rounded-full text-sm font-medium transition-colors ${
-                  score === val
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            return (
+              <div
+                key={question.id}
+                className={`border rounded-lg overflow-hidden ${
+                  linkedGoals ? 'border-purple-200 bg-purple-50/50' : 'border-gray-200'
                 }`}
               >
-                {val}
-              </button>
-            ))}
+                {/* Question header */}
+                <button
+                  type="button"
+                  onClick={() => setExpandedQuestion(isExpanded ? null : question.id)}
+                  className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center space-x-2 text-left">
+                    {linkedGoals && (
+                      <div className="flex-shrink-0" title={`Linked to: ${linkedGoals.map(g => g.goalTitle).join(', ')}`}>
+                        <Target className="w-4 h-4 text-purple-500" />
+                      </div>
+                    )}
+                    <span className="font-medium text-gray-900">{question.question_text}</span>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <span className={`text-lg font-bold ${
+                      scoreData.score >= 7 ? 'text-green-600' :
+                      scoreData.score >= 4 ? 'text-yellow-600' : 'text-red-600'
+                    }`}>
+                      {scoreData.score}
+                    </span>
+                    {isExpanded ? (
+                      <ChevronUp className="w-5 h-5 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-gray-400" />
+                    )}
+                  </div>
+                </button>
+
+                {/* Expanded content */}
+                {isExpanded && (
+                  <div className="px-4 pb-4 space-y-4">
+                    {/* Linked goal indicator */}
+                    {linkedGoals && (
+                      <div className="text-xs text-purple-600 bg-purple-100 rounded px-2 py-1 inline-flex items-center">
+                        <Target className="w-3 h-3 mr-1" />
+                        Tracking: {linkedGoals.map(g => g.goalTitle).join(', ')}
+                      </div>
+                    )}
+
+                    {/* Score slider */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>1</span>
+                        <span>5</span>
+                        <span>10</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        step="0.5"
+                        value={scoreData.score}
+                        onChange={(e) => updateScore(question.id, 'score', parseFloat(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                    </div>
+
+                    {/* Quick score buttons */}
+                    <div className="flex justify-center space-x-2">
+                      {[1, 3, 5, 7, 9, 10].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => updateScore(question.id, 'score', val)}
+                          className={`w-8 h-8 rounded-full text-xs font-medium transition-colors ${
+                            scoreData.score === val
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {val}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Notes */}
+                    <div>
+                      <textarea
+                        value={scoreData.notes}
+                        onChange={(e) => updateScore(question.id, 'notes', e.target.value)}
+                        placeholder="Any notes or reflections..."
+                        rows={2}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {/* Baseline reference */}
+                    {(question.baseline_score || question.target_score) && (
+                      <p className="text-xs text-gray-500 text-center">
+                        Baseline: {question.baseline_score || 'N/A'} | Target: {question.target_score || 'Not set'}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Summary and submit */}
+          <div className="pt-4 border-t">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm text-gray-600">Average score:</span>
+              <span className="text-2xl font-bold text-blue-600">{avgScore}</span>
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              size="lg"
+              isLoading={isSubmitting}
+            >
+              {todayResponses.length > 0 ? 'Update Check-In' : 'Complete Check-In'}
+            </Button>
           </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes (optional)
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any thoughts or reflections..."
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          {/* Baseline reference */}
-          {question.baseline_score && (
-            <p className="text-sm text-gray-500 text-center">
-              Baseline: {question.baseline_score} | Target: {question.target_score || 'Not set'}
-            </p>
-          )}
-
-          {/* Submit */}
-          <Button
-            type="submit"
-            className="w-full"
-            size="lg"
-            isLoading={isSubmitting}
-          >
-            {todayResponse ? 'Update Check-In' : 'Complete Check-In'}
-          </Button>
         </form>
       </CardContent>
     </Card>
