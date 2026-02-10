@@ -1,30 +1,34 @@
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Settings } from 'lucide-react';
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { SettingsPageClient } from '@/components/settings/SettingsPageClient';
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/auth/login');
+  }
+
+  // Fetch measures (survey questions)
+  const { data: measures } = await supabase
+    .from('survey_questions')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('sort_order');
+
+  // Fetch goals (to show which ones are linked to measures)
+  const { data: goals } = await supabase
+    .from('goals')
+    .select('id, title, measure_id, status')
+    .eq('user_id', user.id)
+    .not('measure_id', 'is', null);
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-500">Configure your goal tracker</p>
-      </div>
-
-      <Card>
-        <CardContent className="py-12">
-          <div className="text-center space-y-4">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100">
-              <Settings className="w-8 h-8 text-gray-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Settings Coming Soon</h3>
-              <p className="text-gray-500 mt-1">
-                You&apos;ll be able to configure time targets, survey questions,
-                notification preferences, and more.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <SettingsPageClient
+      measures={measures || []}
+      goals={goals || []}
+      userId={user.id}
+    />
   );
 }
