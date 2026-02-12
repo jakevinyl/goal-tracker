@@ -24,7 +24,10 @@ import {
   Plus,
   Save,
   Edit3,
-  Pencil
+  Pencil,
+  Sparkles,
+  ListPlus,
+  Loader2
 } from 'lucide-react';
 
 interface TaskListProps {
@@ -55,6 +58,16 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
     description: string;
   }>({ title: '', priority: 'medium', due_date: '', expected_hours: '', description: '' });
   const [savingEdit, setSavingEdit] = useState(false);
+  // Create task from update
+  const [creatingTaskFrom, setCreatingTaskFrom] = useState<{ text: string; taskId: string; bucketId: string } | null>(null);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [creatingTask, setCreatingTask] = useState(false);
+  // AI extraction
+  const [extractingFrom, setExtractingFrom] = useState<{ text: string; taskId: string; bucketId: string } | null>(null);
+  const [extractedTasks, setExtractedTasks] = useState<string[]>([]);
+  const [selectedExtracted, setSelectedExtracted] = useState<Set<number>>(new Set());
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [creatingExtracted, setCreatingExtracted] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -359,6 +372,96 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
     setAddingUpdate(false);
   };
 
+  // Create a single task from update text
+  const handleCreateTaskFromUpdate = async () => {
+    if (!creatingTaskFrom || !newTaskTitle.trim()) return;
+
+    setCreatingTask(true);
+
+    const { error } = await supabase
+      .from('tasks')
+      .insert({
+        user_id: tasks[0]?.user_id,
+        bucket_id: creatingTaskFrom.bucketId,
+        title: newTaskTitle.trim(),
+        status: 'open',
+        priority: 'medium',
+      });
+
+    if (error) {
+      console.error('Error creating task:', error);
+      alert('Failed to create task');
+    } else {
+      setCreatingTaskFrom(null);
+      setNewTaskTitle('');
+      router.refresh();
+    }
+
+    setCreatingTask(false);
+  };
+
+  // Extract tasks using AI
+  const handleExtractTasks = async () => {
+    if (!extractingFrom) return;
+
+    setIsExtracting(true);
+    setExtractedTasks([]);
+    setSelectedExtracted(new Set());
+
+    try {
+      const response = await fetch('/api/extract-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: extractingFrom.text }),
+      });
+
+      if (!response.ok) throw new Error('Failed to extract tasks');
+
+      const data = await response.json();
+      setExtractedTasks(data.tasks || []);
+      // Select all by default
+      setSelectedExtracted(new Set(data.tasks?.map((_: string, i: number) => i) || []));
+    } catch (error) {
+      console.error('Error extracting tasks:', error);
+      alert('Failed to extract tasks. Make sure the API is configured.');
+    }
+
+    setIsExtracting(false);
+  };
+
+  // Create selected extracted tasks
+  const handleCreateExtractedTasks = async () => {
+    if (!extractingFrom || selectedExtracted.size === 0) return;
+
+    setCreatingExtracted(true);
+
+    const tasksToCreate = extractedTasks
+      .filter((_, i) => selectedExtracted.has(i))
+      .map(title => ({
+        user_id: tasks[0]?.user_id,
+        bucket_id: extractingFrom.bucketId,
+        title: title.trim(),
+        status: 'open',
+        priority: 'medium',
+      }));
+
+    const { error } = await supabase
+      .from('tasks')
+      .insert(tasksToCreate);
+
+    if (error) {
+      console.error('Error creating tasks:', error);
+      alert('Failed to create tasks');
+    } else {
+      setExtractingFrom(null);
+      setExtractedTasks([]);
+      setSelectedExtracted(new Set());
+      router.refresh();
+    }
+
+    setCreatingExtracted(false);
+  };
+
   const formatUpdateDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -461,6 +564,161 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
                 Complete
               </Button>
               <Button variant="outline" onClick={handleCancelComplete}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Task from Update Dialog */}
+      {creatingTaskFrom && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <ListPlus className="w-5 h-5 mr-2 text-blue-600" />
+                Create Task
+              </h3>
+              <button
+                onClick={() => { setCreatingTaskFrom(null); setNewTaskTitle(''); }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+              <p className="font-medium text-gray-700 mb-1">From update:</p>
+              <p className="italic">&quot;{creatingTaskFrom.text}&quot;</p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Task title
+              </label>
+              <input
+                type="text"
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                placeholder="Enter task title..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newTaskTitle.trim()) {
+                    handleCreateTaskFromUpdate();
+                  }
+                }}
+              />
+            </div>
+
+            <div className="flex space-x-3">
+              <Button
+                onClick={handleCreateTaskFromUpdate}
+                isLoading={creatingTask}
+                disabled={!newTaskTitle.trim()}
+                className="flex-1"
+              >
+                Create Task
+              </Button>
+              <Button variant="outline" onClick={() => { setCreatingTaskFrom(null); setNewTaskTitle(''); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Extract Tasks Dialog */}
+      {extractingFrom && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Sparkles className="w-5 h-5 mr-2 text-purple-600" />
+                Extract Tasks with AI
+              </h3>
+              <button
+                onClick={() => { setExtractingFrom(null); setExtractedTasks([]); setSelectedExtracted(new Set()); }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+              <p className="font-medium text-gray-700 mb-1">Analyzing:</p>
+              <p className="italic">&quot;{extractingFrom.text}&quot;</p>
+            </div>
+
+            {isExtracting ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-3" />
+                <p className="text-gray-500">Extracting tasks...</p>
+              </div>
+            ) : extractedTasks.length > 0 ? (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Found {extractedTasks.length} potential task(s):
+                </label>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {extractedTasks.map((task, i) => (
+                    <label
+                      key={i}
+                      className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedExtracted.has(i)
+                          ? 'bg-purple-50 border-purple-300'
+                          : 'bg-white border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedExtracted.has(i)}
+                        onChange={(e) => {
+                          const newSet = new Set(selectedExtracted);
+                          if (e.target.checked) {
+                            newSet.add(i);
+                          } else {
+                            newSet.delete(i);
+                          }
+                          setSelectedExtracted(newSet);
+                        }}
+                        className="mt-0.5 w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-gray-700">{task}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="mb-4">
+                <p className="text-gray-500 text-center py-4">
+                  Click &quot;Extract&quot; to find tasks in this update.
+                </p>
+              </div>
+            )}
+
+            <div className="flex space-x-3">
+              {extractedTasks.length > 0 ? (
+                <Button
+                  onClick={handleCreateExtractedTasks}
+                  isLoading={creatingExtracted}
+                  disabled={selectedExtracted.size === 0}
+                  className="flex-1"
+                >
+                  Create {selectedExtracted.size} Task{selectedExtracted.size !== 1 ? 's' : ''}
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleExtractTasks}
+                  isLoading={isExtracting}
+                  className="flex-1"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Extract Tasks
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => { setExtractingFrom(null); setExtractedTasks([]); setSelectedExtracted(new Set()); }}>
                 Cancel
               </Button>
             </div>
@@ -768,16 +1026,38 @@ export function TaskList({ tasks, title, showCompleted = false, emptyMessage = "
                               </div>
 
                               {/* Update list */}
-                              <div className="space-y-1 max-h-40 overflow-y-auto">
+                              <div className="space-y-1 max-h-48 overflow-y-auto">
                                 {(taskUpdates[task.id] || []).length === 0 ? (
                                   <p className="text-xs text-gray-400 italic py-1">No updates yet</p>
                                 ) : (
                                   (taskUpdates[task.id] || []).map((update) => (
-                                    <div key={update.id} className="flex items-start space-x-2 text-sm bg-blue-50 rounded px-2 py-1">
+                                    <div key={update.id} className="group flex items-start space-x-2 text-sm bg-blue-50 rounded px-2 py-1.5 hover:bg-blue-100 transition-colors">
                                       <span className="text-xs text-gray-400 whitespace-nowrap mt-0.5">
                                         {formatUpdateDate(update.created_at)}
                                       </span>
-                                      <span className="text-gray-700">{update.content}</span>
+                                      <span className="text-gray-700 flex-1">{update.content}</span>
+                                      {/* Action buttons - show on hover */}
+                                      <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          onClick={() => {
+                                            setCreatingTaskFrom({ text: update.content, taskId: task.id, bucketId: task.bucket_id });
+                                            setNewTaskTitle(update.content);
+                                          }}
+                                          className="p-1 text-gray-400 hover:text-blue-600 rounded hover:bg-white"
+                                          title="Create task from this"
+                                        >
+                                          <ListPlus className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            setExtractingFrom({ text: update.content, taskId: task.id, bucketId: task.bucket_id });
+                                          }}
+                                          className="p-1 text-gray-400 hover:text-purple-600 rounded hover:bg-white"
+                                          title="Extract tasks with AI"
+                                        >
+                                          <Sparkles className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
                                     </div>
                                   ))
                                 )}
